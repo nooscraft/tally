@@ -1,0 +1,61 @@
+[package]
+name = "tokuin"
+version = "0.1.0"
+edition = "2021"
+authors = ["Tokuin Contributors"]
+license = "MIT OR Apache-2.0"
+description = "A fast CLI tool to estimate token usage and API costs for LLM prompts"
+repository = "https://github.com/nooscraft/tokuin"
+keywords = ["llm", "tokens", "openai", "claude", "cli", "prompt", "tokuin"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
+thiserror = "1.0"
+
+# OpenAI tokenization
+tiktoken-rs = { version = "0.6", optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Configuration
+toml = "0.8"
+
+# Async runtime (optional for future features)
+tokio = { version = "1.0", features = ["full"], optional = true }
+
+# File watching
+notify = { version = "5.0", optional = true }
+
+# Markdown parsing
+pulldown-cmark = { version = "0.9", optional = true }
+
+# SentencePiece for Gemini and other models (optional, requires CMake)
+# Note: Gemini works without this using approximation, but for exact counts install CMake:
+#   macOS: brew install cmake
+#   Linux: apt-get install cmake (or yum install cmake)
+#   Windows: Download from https://cmake.org/download/
+sentencepiece = { version = "0.12", optional = true }
+
+[features]
+default = ["openai"]
+openai = ["tiktoken-rs"]
+watch = ["notify", "tokio"]
+markdown = ["pulldown-cmark"]
+gemini = []  # Gemini works without sentencepiece (uses approximation)
+# For exact Gemini tokenization, enable sentencepiece: gemini-sentencepiece = ["sentencepiece"]
+gemini-sentencepiece = ["sentencepiece"]
+all = ["openai", "watch", "markdown", "gemini"]
+
+[dev-dependencies]
+# Testing
+tempfile = "3.8"
+
+[[bin]]
+name = "tokuin"
+path = "src/main.rs"
