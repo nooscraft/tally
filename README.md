@@ -268,6 +268,12 @@ Run with output:
 cargo test -- --nocapture
 ```
 
+### Minimum Supported Rust Version (MSRV)
+
+The project currently targets Rust 1.70+ as indicated by the badge. However, due to dependency compatibility issues (Cargo.lock version 4 and newer dependency requirements), we do not currently test against a specific MSRV in CI. The project is tested on stable and beta Rust versions.
+
+If you need to support an older Rust version, you may need to pin dependencies to compatible versions. See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
