@@ -70,4 +70,20 @@ pub enum AppError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[cfg(feature = "load-test")]
+    #[error("HTTP error: {0}")]
+    Http(String),
+
+    #[cfg(feature = "load-test")]
+    #[error("API error: {0}")]
+    Api(String),
+
+    #[cfg(feature = "load-test")]
+    #[error("Configuration error: {0}")]
+    Config(String),
+
+    #[cfg(feature = "load-test")]
+    #[error("JSON serialization error: {0}")]
+    Json(#[from] serde_json::Error),
 }

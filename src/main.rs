@@ -9,6 +9,11 @@ mod parsers;
 mod tokenizers;
 mod utils;
 
+#[cfg(feature = "load-test")]
+mod http;
+#[cfg(feature = "load-test")]
+mod simulator;
+
 use clap::Parser;
 use cli::Cli;
 

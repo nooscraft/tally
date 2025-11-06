@@ -8,7 +8,7 @@ use crate::tokenizers::Tokenizer;
 #[cfg(feature = "markdown")]
 use crate::utils::markdown;
 /// CLI argument parsing and command execution.
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::io::{self, Read};
 #[cfg(feature = "watch")]
 use std::path::PathBuf;
@@ -21,6 +21,10 @@ use std::time::Duration;
 #[command(about = "A fast CLI tool to estimate token usage and API costs for LLM prompts")]
 #[command(version)]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
+    // Legacy flat arguments for backward compatibility
     /// Input file path (use '-' for stdin or omit for direct text input)
     #[arg(value_name = "FILE|TEXT")]
     pub input: Option<String>,
@@ -60,6 +64,116 @@ pub struct Cli {
     pub watch: bool,
 }
 
+/// Available commands.
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Estimate tokens and costs (default behavior)
+    Estimate {
+        /// Input file path (use '-' for stdin or omit for direct text input)
+        #[arg(value_name = "FILE|TEXT")]
+        input: Option<String>,
+
+        /// Model to use for tokenization (e.g., gpt-4, gpt-3.5-turbo)
+        #[arg(short, long)]
+        model: Option<String>,
+
+        /// Compare multiple models
+        #[arg(short, long, num_args = 1..)]
+        compare: Vec<String>,
+
+        /// Show token breakdown by role (system/user/assistant)
+        #[arg(short, long)]
+        breakdown: bool,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value = "text")]
+        format: OutputFormat,
+
+        /// Show pricing information
+        #[arg(short, long)]
+        price: bool,
+
+        /// Strip markdown formatting to show token savings
+        #[arg(long)]
+        #[cfg(feature = "markdown")]
+        minify: bool,
+
+        /// Compare two prompts and show token differences
+        #[arg(long)]
+        diff: Option<String>,
+
+        /// Watch file for changes and re-run automatically
+        #[arg(short, long)]
+        #[cfg(feature = "watch")]
+        watch: bool,
+    },
+
+    /// Run load tests against LLM APIs
+    #[cfg(feature = "load-test")]
+    #[command(name = "load-test")]
+    LoadTest {
+        /// Model to use (e.g., gpt-4, claude-2)
+        #[arg(short, long)]
+        model: String,
+
+        /// API endpoint URL (optional, uses provider default if not specified)
+        #[arg(long)]
+        endpoint: Option<String>,
+
+        /// API key (or use environment variable)
+        #[arg(long)]
+        api_key: Option<String>,
+
+        /// OpenAI API key (alternative to --api-key)
+        #[arg(long)]
+        openai_api_key: Option<String>,
+
+        /// Anthropic API key
+        #[arg(long)]
+        anthropic_api_key: Option<String>,
+
+        /// OpenRouter API key
+        #[arg(long)]
+        openrouter_api_key: Option<String>,
+
+        /// Number of concurrent requests
+        #[arg(short, long, default_value = "10")]
+        concurrency: usize,
+
+        /// Total number of requests to make
+        #[arg(short, long)]
+        runs: usize,
+
+        /// Prompt file (JSONL, YAML, or text) or use stdin
+        #[arg(short, long)]
+        prompt_file: Option<String>,
+
+        /// Think time between requests (e.g., "250-750ms" or "500ms")
+        #[arg(long)]
+        think_time: Option<String>,
+
+        /// Retry count on failure
+        #[arg(long, default_value = "3")]
+        retry: u32,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value = "text")]
+        output_format: LoadTestOutputFormat,
+
+        /// Estimate costs (dry run without making API calls)
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Maximum cost threshold (stop if exceeded)
+        #[arg(long)]
+        max_cost: Option<f64>,
+
+        /// Show cost estimation
+        #[arg(short, long)]
+        estimate_cost: bool,
+    },
+}
+
 /// Output format options.
 #[derive(Debug, Clone, ValueEnum)]
 pub enum OutputFormat {
@@ -72,27 +186,136 @@ pub enum OutputFormat {
     Markdown,
 }
 
+/// Load test output format options.
+#[cfg(feature = "load-test")]
+#[derive(Debug, Clone, ValueEnum)]
+pub enum LoadTestOutputFormat {
+    /// Human-readable text output
+    Text,
+    /// JSON output for scripting
+    Json,
+    /// CSV output
+    Csv,
+    /// Prometheus metrics format
+    Prometheus,
+    /// Markdown report format
+    Markdown,
+}
+
 impl Cli {
     /// Execute the CLI command.
     pub fn run(self) -> Result<(), AppError> {
+        match self.command {
+            Some(Command::Estimate {
+                input,
+                model,
+                compare,
+                breakdown,
+                format,
+                price,
+                #[cfg(feature = "markdown")]
+                minify,
+                diff,
+                #[cfg(feature = "watch")]
+                watch,
+            }) => {
+                // Use subcommand args, but fall back to top-level args if not provided
+                let estimate_args = EstimateArgs {
+                    input: input.or(self.input),
+                    model: model.or(self.model),
+                    compare: if !compare.is_empty() {
+                        compare
+                    } else {
+                        self.compare
+                    },
+                    breakdown: breakdown || self.breakdown,
+                    format,
+                    price: price || self.price,
+                    #[cfg(feature = "markdown")]
+                    minify: minify || self.minify,
+                    diff: diff.or(self.diff),
+                    #[cfg(feature = "watch")]
+                    watch: watch || self.watch,
+                };
+                Self::run_estimate(estimate_args)
+            }
+            #[cfg(feature = "load-test")]
+            Some(Command::LoadTest {
+                model,
+                endpoint,
+                api_key,
+                openai_api_key,
+                anthropic_api_key,
+                openrouter_api_key,
+                concurrency,
+                runs,
+                prompt_file,
+                think_time,
+                retry,
+                output_format,
+                dry_run,
+                max_cost,
+                estimate_cost,
+            }) => {
+                let load_args = LoadTestArgs {
+                    model,
+                    endpoint,
+                    api_key,
+                    openai_api_key,
+                    anthropic_api_key,
+                    openrouter_api_key,
+                    concurrency,
+                    runs,
+                    prompt_file,
+                    think_time,
+                    retry,
+                    output_format,
+                    dry_run,
+                    max_cost,
+                    estimate_cost,
+                };
+                Self::run_load_test(load_args)
+            }
+            None => {
+                // Backward compatibility: use flat structure
+                let estimate_args = EstimateArgs {
+                    input: self.input,
+                    model: self.model,
+                    compare: self.compare,
+                    breakdown: self.breakdown,
+                    format: self.format,
+                    price: self.price,
+                    #[cfg(feature = "markdown")]
+                    minify: self.minify,
+                    diff: self.diff,
+                    #[cfg(feature = "watch")]
+                    watch: self.watch,
+                };
+                Self::run_estimate(estimate_args)
+            }
+        }
+    }
+
+    /// Run estimate command (existing functionality).
+    fn run_estimate(args: EstimateArgs) -> Result<(), AppError> {
         #[cfg(feature = "watch")]
-        if self.watch {
-            return self.run_watch();
+        if args.watch {
+            return Self::run_watch(&args);
         }
 
         // Handle diff mode
-        if let Some(ref diff_file) = self.diff {
-            return self.run_diff(diff_file);
+        if let Some(ref diff_file) = args.diff {
+            return Self::run_diff(&args, diff_file);
         }
 
         let registry = ModelRegistry::new();
 
         // Determine input
-        let input = self.get_input()?;
+        let input = Self::get_input(&args.input)?;
 
         // Apply minify if requested
         #[cfg(feature = "markdown")]
-        let original_input = if self.minify {
+        let original_input = if args.minify {
             let stripped = markdown::strip_markdown(&input);
             let savings = markdown::calculate_savings(&input, &stripped);
             eprintln!(
@@ -108,13 +331,13 @@ impl Cli {
         #[cfg(not(feature = "markdown"))]
         let original_input = input.clone();
 
-        let breakdown = self.breakdown;
-        let price = self.price;
+        let breakdown = args.breakdown;
+        let price = args.price;
 
         // Determine models to use
-        let models = if !self.compare.is_empty() {
-            self.compare.clone()
-        } else if let Some(model) = &self.model {
+        let models = if !args.compare.is_empty() {
+            args.compare.clone()
+        } else if let Some(model) = &args.model {
             vec![model.clone()]
         } else {
             return Err(AppError::Parse(crate::error::ParseError::InvalidFormat(
@@ -142,11 +365,11 @@ impl Cli {
         }
 
         // Format and print output
-        let formatter: Box<dyn Formatter> = match self.format {
-            OutputFormat::Text => Box::new(TextFormatter::new(self.breakdown)),
+        let formatter: Box<dyn Formatter> = match args.format {
+            OutputFormat::Text => Box::new(TextFormatter::new(args.breakdown)),
             OutputFormat::Json => Box::new(JsonFormatter::new()),
             #[cfg(feature = "markdown")]
-            OutputFormat::Markdown => Box::new(MarkdownFormatter::new(self.breakdown)),
+            OutputFormat::Markdown => Box::new(MarkdownFormatter::new(args.breakdown)),
         };
 
         if results.len() == 1 {
@@ -158,9 +381,275 @@ impl Cli {
         Ok(())
     }
 
+    /// Run load test command.
+    #[cfg(feature = "load-test")]
+    fn run_load_test(args: LoadTestArgs) -> Result<(), AppError> {
+        use crate::http::client::ClientConfig;
+        use crate::http::providers::openai::OpenAIClient;
+        use crate::http::providers::openrouter::OpenRouterClient;
+        use crate::simulator::config::SimulatorConfig;
+        use crate::simulator::simulator::Simulator;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        // Determine API key and provider (check environment variables first, then CLI args)
+        let (api_key, provider) = if let Some(key) = args
+            .openrouter_api_key
+            .clone()
+            .or_else(|| std::env::var("OPENROUTER_API_KEY").ok())
+        {
+            (key, "openrouter")
+        } else if let Some(key) = args
+            .openai_api_key
+            .clone()
+            .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+        {
+            (key, "openai")
+        } else if let Some(key) = args
+            .anthropic_api_key
+            .clone()
+            .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok())
+        {
+            (key, "anthropic")
+        } else if let Some(key) = args
+            .api_key
+            .clone()
+            .or_else(|| std::env::var("API_KEY").ok())
+        {
+            // Generic API key - try to detect provider from model name or endpoint
+            let detected_provider =
+                if args.model.contains("openai/") || args.model.starts_with("gpt-") {
+                    "openai"
+                } else if args.model.contains("anthropic/") || args.model.starts_with("claude-") {
+                    "anthropic"
+                } else if args
+                    .endpoint
+                    .as_ref()
+                    .map(|e| e.contains("openrouter"))
+                    .unwrap_or(false)
+                {
+                    "openrouter"
+                } else {
+                    "openai" // Default to OpenAI for backward compatibility
+                };
+            (key, detected_provider)
+        } else {
+            if !args.dry_run {
+                return Err(AppError::Config(
+                    "API key required. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or use --api-key".to_string(),
+                ));
+            }
+            ("dummy-key-for-dry-run".to_string(), "openai")
+        };
+
+        // Get prompt
+        let prompt = if let Some(ref prompt_file) = args.prompt_file {
+            std::fs::read_to_string(prompt_file).map_err(|e| {
+                AppError::Io(std::io::Error::other(format!(
+                    "Failed to read prompt file: {}",
+                    e
+                )))
+            })?
+        } else {
+            // Read from stdin
+            let mut buffer = String::new();
+            io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        };
+
+        if prompt.trim().is_empty() {
+            return Err(AppError::Config("Prompt cannot be empty".to_string()));
+        }
+
+        // Build simulator config
+        let mut sim_config = SimulatorConfig::new(args.concurrency, args.runs);
+        sim_config.retry = args.retry;
+        sim_config.dry_run = args.dry_run;
+        sim_config.max_cost = args.max_cost;
+        sim_config.timeout = Duration::from_secs(60);
+
+        if let Some(ref think_time_str) = args.think_time {
+            sim_config.think_time =
+                Some(SimulatorConfig::parse_think_time(think_time_str).map_err(AppError::Config)?);
+        }
+
+        // Create HTTP client config
+        let endpoint = args.endpoint.clone().unwrap_or_default();
+        let model = args.model.clone();
+        let estimate_cost = args.estimate_cost;
+
+        let client_config = ClientConfig {
+            endpoint,
+            api_key: api_key.clone(),
+            timeout: Duration::from_secs(60),
+            headers: Vec::new(),
+        };
+
+        // Create client based on detected provider
+        use crate::http::client::LlmClientEnum;
+        let client = match provider {
+            "openrouter" => Arc::new(LlmClientEnum::OpenRouter(OpenRouterClient::new(
+                client_config,
+            )?)),
+            "openai" => Arc::new(LlmClientEnum::OpenAI(OpenAIClient::new(client_config)?)),
+            "anthropic" => {
+                // Anthropic not yet implemented, fall back to error
+                return Err(AppError::Config(
+                    "Anthropic client not yet implemented. Use OpenAI or OpenRouter.".to_string(),
+                ));
+            }
+            _ => Arc::new(LlmClientEnum::OpenAI(OpenAIClient::new(client_config)?)), // Default to OpenAI
+        };
+
+        // Run simulator
+        let simulator = Simulator::new(sim_config);
+
+        if args.dry_run {
+            eprintln!("Dry run mode: No API calls will be made");
+        } else {
+            eprintln!(
+                "Starting load test: {} requests with concurrency {}",
+                args.runs, args.concurrency
+            );
+        }
+
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| AppError::Config(format!("Failed to create async runtime: {}", e)))?;
+
+        // Create progress bar
+        let progress_bar = if !args.dry_run {
+            let pb = indicatif::ProgressBar::new(args.runs as u64);
+            pb.set_style(
+                indicatif::ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} {msg}")
+                    .unwrap()
+                    .progress_chars("#>-"),
+            );
+            pb.set_message("Starting load test...");
+            Some(Arc::new(pb))
+        } else {
+            None
+        };
+
+        let results = if let Some(ref pb) = progress_bar {
+            rt.block_on(simulator.run_with_progress(client, &prompt, &model, Some(pb.clone())))?
+        } else {
+            rt.block_on(simulator.run(client, &prompt, &model))?
+        };
+
+        // Calculate and display metrics
+        Self::display_load_test_results(&results, &model, &args.output_format, estimate_cost)?;
+
+        Ok(())
+    }
+
+    /// Display load test results.
+    #[cfg(feature = "load-test")]
+    fn display_load_test_results(
+        results: &[crate::simulator::simulator::RequestResult],
+        model: &str,
+        output_format: &LoadTestOutputFormat,
+        estimate_cost: bool,
+    ) -> Result<(), AppError> {
+        let successful = results.iter().filter(|r| r.success).count();
+        let failed = results.len() - successful;
+        let success_rate = (successful as f64 / results.len() as f64) * 100.0;
+
+        let latencies: Vec<u64> = results
+            .iter()
+            .filter_map(|r| if r.success { Some(r.latency_ms) } else { None })
+            .collect();
+
+        let avg_latency = if !latencies.is_empty() {
+            latencies.iter().sum::<u64>() as f64 / latencies.len() as f64
+        } else {
+            0.0
+        };
+
+        let p50 = if !latencies.is_empty() {
+            let mut sorted = latencies.clone();
+            sorted.sort();
+            sorted[sorted.len() / 2]
+        } else {
+            0
+        };
+
+        let p95 = if !latencies.is_empty() {
+            let mut sorted = latencies.clone();
+            sorted.sort();
+            sorted[(sorted.len() as f64 * 0.95) as usize]
+        } else {
+            0
+        };
+
+        match output_format {
+            LoadTestOutputFormat::Text => {
+                println!("\n=== Load Test Results ===");
+                println!("Total Requests: {}", results.len());
+                println!("Successful: {} ({:.1}%)", successful, success_rate);
+                println!("Failed: {} ({:.1}%)", failed, 100.0 - success_rate);
+                println!("\nLatency (ms):");
+                println!("  Average: {:.2}", avg_latency);
+                println!("  p50: {}", p50);
+                println!("  p95: {}", p95);
+
+                if estimate_cost {
+                    // Calculate estimated cost using tokenizer
+                    let registry = ModelRegistry::new();
+                    if let Ok(tokenizer) = registry.get_tokenizer(model) {
+                        let input_tokens: usize =
+                            results.iter().filter_map(|r| r.input_tokens).sum();
+                        let output_tokens: usize =
+                            results.iter().filter_map(|r| r.output_tokens).sum();
+
+                        let input_cost = tokenizer
+                            .input_price_per_1k()
+                            .map(|price| (input_tokens as f64 / 1000.0) * price);
+                        let output_cost = tokenizer
+                            .output_price_per_1k()
+                            .map(|price| (output_tokens as f64 / 1000.0) * price);
+
+                        if let (Some(in_cost), Some(out_cost)) = (input_cost, output_cost) {
+                            let total_cost = in_cost + out_cost;
+                            println!("\nCost Estimation:");
+                            println!("  Input tokens: {}", input_tokens);
+                            println!("  Output tokens: {}", output_tokens);
+                            println!("  Input cost: ${:.6}", in_cost);
+                            println!("  Output cost: ${:.6}", out_cost);
+                            println!("  Total cost: ${:.6}", total_cost);
+                        }
+                    }
+                }
+            }
+            LoadTestOutputFormat::Json => {
+                let json = serde_json::json!({
+                    "total_requests": results.len(),
+                    "successful": successful,
+                    "failed": failed,
+                    "success_rate": success_rate,
+                    "latency_ms": {
+                        "average": avg_latency,
+                        "p50": p50,
+                        "p95": p95
+                    }
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json).map_err(AppError::Json)?
+                );
+            }
+            _ => {
+                // TODO: Implement other formats in Phase 2
+                println!("Format not yet implemented");
+            }
+        }
+
+        Ok(())
+    }
+
     /// Get input from file, stdin, or argument.
-    fn get_input(&self) -> Result<String, AppError> {
-        if let Some(input) = &self.input {
+    fn get_input(input: &Option<String>) -> Result<String, AppError> {
+        if let Some(input) = input {
             if input == "-" {
                 // Read from stdin
                 let mut buffer = String::new();
@@ -243,11 +732,11 @@ impl Cli {
     }
 
     /// Run in diff mode, comparing two prompts.
-    fn run_diff(&self, diff_file: &str) -> Result<(), AppError> {
+    fn run_diff(args: &EstimateArgs, diff_file: &str) -> Result<(), AppError> {
         let registry = ModelRegistry::new();
 
         // Get both inputs
-        let input1 = self.get_input()?;
+        let input1 = Self::get_input(&args.input)?;
         let input2 = std::fs::read_to_string(diff_file).map_err(|e| {
             AppError::Io(std::io::Error::other(format!(
                 "Failed to read diff file '{}': {}",
@@ -256,7 +745,7 @@ impl Cli {
         })?;
 
         // Determine model
-        let model = self.model.as_ref().ok_or_else(|| {
+        let model = args.model.as_ref().ok_or_else(|| {
             AppError::Parse(crate::error::ParseError::InvalidFormat(
                 "Model required for diff mode. Use --model".to_string(),
             ))
@@ -283,8 +772,8 @@ impl Cli {
         let messages2 = parser2.parse(&input2)?;
 
         // Count tokens for both
-        let result1 = Self::count_tokens(&*tokenizer, &messages1, model, false, self.price)?;
-        let result2 = Self::count_tokens(&*tokenizer, &messages2, model, false, self.price)?;
+        let result1 = Self::count_tokens(&*tokenizer, &messages1, model, false, args.price)?;
+        let result2 = Self::count_tokens(&*tokenizer, &messages2, model, false, args.price)?;
 
         // Show diff
         let diff = result2.tokens as i64 - result1.tokens as i64;
@@ -297,7 +786,7 @@ impl Cli {
             diff
         );
 
-        if self.price {
+        if args.price {
             if let (Some(cost1), Some(cost2)) = (result1.input_cost, result2.input_cost) {
                 let cost_diff = cost2 - cost1;
                 println!("Cost difference: ${:.4}", cost_diff.abs());
@@ -309,11 +798,11 @@ impl Cli {
 
     /// Run in watch mode, monitoring file for changes.
     #[cfg(feature = "watch")]
-    fn run_watch(&self) -> Result<(), AppError> {
+    fn run_watch(args: &EstimateArgs) -> Result<(), AppError> {
         use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
         use std::sync::mpsc;
 
-        let input_file = self.input.as_ref().ok_or_else(|| {
+        let input_file = args.input.as_ref().ok_or_else(|| {
             AppError::Parse(crate::error::ParseError::InvalidFormat(
                 "File path required for watch mode".to_string(),
             ))
@@ -359,7 +848,7 @@ impl Cli {
             })?;
 
         // Run initial analysis
-        self.run_once()?;
+        Self::run_estimate_once(args)?;
 
         // Watch for changes
         loop {
@@ -367,7 +856,7 @@ impl Cli {
                 Ok(Ok(event)) => {
                     if event.kind.is_modify() {
                         println!("\n--- File changed, re-analyzing ---\n");
-                        if let Err(e) = self.run_once() {
+                        if let Err(e) = Self::run_estimate_once(args) {
                             eprintln!("Error: {}", e);
                         }
                     }
@@ -387,28 +876,140 @@ impl Cli {
 
     /// Run a single analysis (used by watch mode).
     #[cfg(feature = "watch")]
-    fn run_once(&self) -> Result<(), AppError> {
-        // Create a temporary CLI without watch flag
-        let mut cli = self.clone();
-        cli.watch = false;
-        cli.run()
+    fn run_estimate_once(args: &EstimateArgs) -> Result<(), AppError> {
+        let mut new_args = args.clone();
+        new_args.watch = false;
+        Self::run_estimate(new_args)
     }
 }
 
+/// Estimate command arguments (for internal use).
+#[derive(Debug, Clone)]
+pub struct EstimateArgs {
+    input: Option<String>,
+    model: Option<String>,
+    compare: Vec<String>,
+    breakdown: bool,
+    format: OutputFormat,
+    price: bool,
+    #[cfg(feature = "markdown")]
+    minify: bool,
+    diff: Option<String>,
+    #[cfg(feature = "watch")]
+    watch: bool,
+}
+
 #[cfg(feature = "watch")]
-impl Clone for Cli {
-    fn clone(&self) -> Self {
+impl Default for EstimateArgs {
+    fn default() -> Self {
         Self {
-            input: self.input.clone(),
-            model: self.model.clone(),
-            compare: self.compare.clone(),
-            breakdown: self.breakdown,
-            format: self.format.clone(),
-            price: self.price,
+            input: None,
+            model: None,
+            compare: Vec::new(),
+            breakdown: false,
+            format: OutputFormat::Text,
+            price: false,
             #[cfg(feature = "markdown")]
-            minify: self.minify,
-            diff: self.diff.clone(),
-            watch: false, // Always false in clone
+            minify: false,
+            diff: None,
+            watch: false,
+        }
+    }
+}
+
+/// Load test command arguments (for internal use).
+#[cfg(feature = "load-test")]
+#[derive(Debug)]
+struct LoadTestArgs {
+    model: String,
+    endpoint: Option<String>,
+    api_key: Option<String>,
+    openai_api_key: Option<String>,
+    anthropic_api_key: Option<String>,
+    openrouter_api_key: Option<String>,
+    concurrency: usize,
+    runs: usize,
+    prompt_file: Option<String>,
+    think_time: Option<String>,
+    retry: u32,
+    output_format: LoadTestOutputFormat,
+    dry_run: bool,
+    max_cost: Option<f64>,
+    estimate_cost: bool,
+}
+
+#[cfg(feature = "load-test")]
+impl From<Command> for LoadTestArgs {
+    fn from(cmd: Command) -> Self {
+        match cmd {
+            Command::LoadTest {
+                model,
+                endpoint,
+                api_key,
+                openai_api_key,
+                anthropic_api_key,
+                openrouter_api_key,
+                concurrency,
+                runs,
+                prompt_file,
+                think_time,
+                retry,
+                output_format,
+                dry_run,
+                max_cost,
+                estimate_cost,
+            } => Self {
+                model,
+                endpoint,
+                api_key,
+                openai_api_key,
+                anthropic_api_key,
+                openrouter_api_key,
+                concurrency,
+                runs,
+                prompt_file,
+                think_time,
+                retry,
+                output_format,
+                dry_run,
+                max_cost,
+                estimate_cost,
+            },
+            _ => panic!("Not a LoadTest command"),
+        }
+    }
+}
+
+#[cfg(feature = "load-test")]
+impl From<Command> for EstimateArgs {
+    fn from(cmd: Command) -> Self {
+        match cmd {
+            Command::Estimate {
+                input,
+                model,
+                compare,
+                breakdown,
+                format,
+                price,
+                #[cfg(feature = "markdown")]
+                minify,
+                diff,
+                #[cfg(feature = "watch")]
+                watch,
+            } => Self {
+                input,
+                model,
+                compare,
+                breakdown,
+                format,
+                price,
+                #[cfg(feature = "markdown")]
+                minify,
+                diff,
+                #[cfg(feature = "watch")]
+                watch,
+            },
+            _ => panic!("Not an Estimate command"),
         }
     }
 }

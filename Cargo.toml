@@ -42,6 +42,22 @@ pulldown-cmark = { version = "0.9", optional = true }
 #   Windows: Download from https://cmake.org/download/
 sentencepiece = { version = "0.12", optional = true }
 
+# HTTP client for load testing
+reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
+async-trait = { version = "0.1", optional = true }
+
+# Progress bars for load testing
+indicatif = { version = "0.17", optional = true }
+
+# Latency histograms for metrics
+hdrhistogram = { version = "7.5", optional = true }
+
+# YAML parsing for prompt files
+serde_yaml = { version = "0.9", optional = true }
+
+# Random number generation for think time
+fastrand = { version = "2.0", optional = true }
+
 [features]
 default = ["openai"]
 openai = ["tiktoken-rs"]
@@ -50,7 +66,8 @@ markdown = ["pulldown-cmark"]
 gemini = []  # Gemini works without sentencepiece (uses approximation)
 # For exact Gemini tokenization, enable sentencepiece: gemini-sentencepiece = ["sentencepiece"]
 gemini-sentencepiece = ["sentencepiece"]
-all = ["openai", "watch", "markdown", "gemini"]
+load-test = ["tokio", "reqwest", "async-trait", "indicatif", "hdrhistogram", "serde_yaml", "fastrand"]
+all = ["openai", "watch", "markdown", "gemini", "load-test"]
 
 [dev-dependencies]
 # Testing

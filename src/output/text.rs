@@ -1,5 +1,5 @@
 /// Text formatter for human-readable output.
-use crate::output::{Formatter, TokenBreakdown, TokenResult};
+use crate::output::{Formatter, TokenResult};
 
 /// Text formatter for human-readable output.
 pub struct TextFormatter {
