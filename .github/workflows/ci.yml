@@ -120,6 +120,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ matrix.rust }}-
 
+      - name: Remove Cargo.lock for MSRV (regenerate with compatible version)
+        if: matrix.rust != 'stable' && matrix.rust != 'beta'
+        run: rm -f Cargo.lock
+
       - name: Build
         run: cargo build --release --verbose
 
