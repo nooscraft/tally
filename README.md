@@ -4,6 +4,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![Crates.io](https://img.shields.io/crates/v/tokuin.svg)](https://crates.io/crates/tokuin)
 [![Documentation](https://docs.rs/tokuin/badge.svg)](https://docs.rs/tokuin)
+[![CI](https://github.com/nooscraft/tokuin/workflows/CI/badge.svg)](https://github.com/nooscraft/tokuin/actions)
 
 A fast, CLI-based tool to estimate **token usage** and **API cost** for prompts targeting various LLM providers (OpenAI, Claude, Mistral, etc.). Built in Rust for performance, portability, and safety.
 

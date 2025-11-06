@@ -169,9 +169,10 @@ impl Cli {
             } else {
                 // Read from file
                 std::fs::read_to_string(input).map_err(|e| {
-                    AppError::Io(std::io::Error::other(
-                        format!("Failed to read file '{}': {}", input, e),
-                    ))
+                    AppError::Io(std::io::Error::other(format!(
+                        "Failed to read file '{}': {}",
+                        input, e
+                    )))
                 })
             }
         } else {
@@ -248,9 +249,10 @@ impl Cli {
         // Get both inputs
         let input1 = self.get_input()?;
         let input2 = std::fs::read_to_string(diff_file).map_err(|e| {
-            AppError::Io(std::io::Error::other(
-                format!("Failed to read diff file '{}': {}", diff_file, e),
-            ))
+            AppError::Io(std::io::Error::other(format!(
+                "Failed to read diff file '{}': {}",
+                diff_file, e
+            )))
         })?;
 
         // Determine model
@@ -341,17 +343,19 @@ impl Cli {
         // Create watcher with config
         let config = Config::default().with_poll_interval(Duration::from_secs(1));
         let mut watcher = RecommendedWatcher::new(tx, config).map_err(|e| {
-            AppError::Io(std::io::Error::other(
-                format!("Failed to create file watcher: {}", e),
-            ))
+            AppError::Io(std::io::Error::other(format!(
+                "Failed to create file watcher: {}",
+                e
+            )))
         })?;
 
         watcher
             .watch(&path, RecursiveMode::NonRecursive)
             .map_err(|e| {
-                AppError::Io(std::io::Error::other(
-                    format!("Failed to watch file: {}", e),
-                ))
+                AppError::Io(std::io::Error::other(format!(
+                    "Failed to watch file: {}",
+                    e
+                )))
             })?;
 
         // Run initial analysis
