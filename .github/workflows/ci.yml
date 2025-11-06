@@ -98,7 +98,7 @@ jobs:
         rust:
           - stable
           - beta
-          - "1.70.0"  # MSRV (Minimum Supported Rust Version)
+          - "1.72.0"  # MSRV (Minimum Supported Rust Version)
     steps:
       - uses: actions/checkout@v4
 
@@ -159,6 +159,7 @@ jobs:
         run: cargo test --verbose
 
       - name: Test binary
+        shell: bash
         run: |
           if [ "${{ runner.os }}" == "Windows" ]; then
             ./target/release/tokuin.exe --version
