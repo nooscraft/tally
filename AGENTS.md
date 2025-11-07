@@ -16,6 +16,7 @@ This document gives AI coding agents, pair-programming assistants, and vibe code
 - Contribution guidelines (AI-friendly): `CONTRIBUTING.md`
 - Coding standards: `.cursor/rules/clean-code.mdc` and section below
 - Distribution plans: `docs/DISTRIBUTION_PLAN.md`
+- Distribution is binary-first (no crates.io publishing planned)
 - Pre-push expectations: `docs/PRE_PUSH_CHECKLIST.md`
 - Load testing design notes: `llm_load_simulator.md`
 

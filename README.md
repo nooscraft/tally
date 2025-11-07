@@ -18,6 +18,22 @@ A fast, CLI-based tool to estimate **token usage** and **API cost** for prompts 
 
 ## 🚀 Installation
 
+### Quick Install (macOS & Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nooscraft/tokuin/main/install.sh | bash
+```
+
+The script detects your platform, downloads the latest release, verifies its checksum, and installs `tokuin` to `/usr/local/bin` (or `~/.local/bin` if root access is unavailable).
+
+### Quick Install (Windows PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/nooscraft/tokuin/main/install.ps1 | iex
+```
+
+By default the binary is placed in `%LOCALAPPDATA%\Programs\tokuin`. To customize the destination, download the script first (`irm ... -OutFile install.ps1`) and invoke `.\install.ps1 -InstallDir "C:\Tools"`.
+
 ### From Source
 
 ```bash
@@ -28,11 +44,9 @@ cargo build --release
 
 The binary will be available at `target/release/tokuin`.
 
-### Using Cargo
+### From Releases
 
-```bash
-cargo install tokuin
-```
+Release archives are published for each tag at [GitHub Releases](https://github.com/nooscraft/tokuin/releases). Download the archive matching your OS/architecture, verify it against `checksums.txt`, and place the `tokuin` binary somewhere on your `PATH` (e.g., `/usr/local/bin` or `%LOCALAPPDATA%\Programs\tokuin`).
 
 ## 📖 Usage
 

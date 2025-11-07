@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            use_cross: false
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+            use_cross: true
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+            use_cross: false
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            use_cross: false
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            use_cross: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: ${{ matrix.use_cross }}
+        run: cargo install cross --locked
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --locked --release --features all --target ${{ matrix.target }}
+          else
+            cargo build --locked --release --features all --target ${{ matrix.target }}
+          fi
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          set -euxo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARGET="${{ matrix.target }}"
+          ARTIFACT_NAME="tokuin-${VERSION}-${TARGET}"
+          BIN_DIR="target/${TARGET}/release"
+          BIN_PATH="${BIN_DIR}/tokuin"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            BIN_PATH="${BIN_PATH}.exe"
+          fi
+
+          mkdir -p bundle
+          cp "${BIN_PATH}" bundle/
+          cp LICENSE-APACHE bundle/
+          cp LICENSE-MIT bundle/
+          cp README.md bundle/
+
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            pwsh -Command "Compress-Archive -Path 'bundle/*' -DestinationPath 'dist/${ARTIFACT_NAME}.zip'"
+          else
+            tar -C bundle -czf "dist/${ARTIFACT_NAME}.tar.gz" .
+          fi
+
+          rm -rf bundle
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare release artifacts
+        run: |
+          set -euxo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p upload
+
+          find dist -maxdepth 2 -type f -name 'tokuin-*' -exec mv {} upload/ \;
+
+          cd upload
+          sha256sum tokuin-* > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Tokuin ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            upload/tokuin-*.tar.gz
+            upload/tokuin-*.zip
+            upload/checksums.txt
+          generate_release_notes: true
+
