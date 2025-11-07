@@ -69,20 +69,19 @@ if [ -z "$release_json" ]; then
   exit 1
 fi
 
-asset_url=$(echo "$release_json" | "$PYTHON_BIN" - "$target" <<'PY'
+asset_url=$(RELEASE_JSON="$release_json" TARGET="$target" "$PYTHON_BIN" <<'PY'
 import json
 import os
-import re
-import sys
 
-data = json.load(sys.stdin)
-target = sys.argv[1]
+data = json.loads(os.environ["RELEASE_JSON"])
+target = os.environ["TARGET"]
 for asset in data.get("assets", []):
     name = asset.get("name", "")
     if name.endswith(f"{target}.tar.gz"):
         print(asset["browser_download_url"])
-        sys.exit(0)
-print("")
+        break
+else:
+    print("")
 PY
 )
 
@@ -91,11 +90,11 @@ if [ -z "$asset_url" ]; then
   exit 1
 fi
 
-checksums_url=$(echo "$release_json" | "$PYTHON_BIN" <<'PY'
+checksums_url=$(RELEASE_JSON="$release_json" "$PYTHON_BIN" <<'PY'
 import json
-import sys
+import os
 
-data = json.load(sys.stdin)
+data = json.loads(os.environ["RELEASE_JSON"])
 for asset in data.get("assets", []):
     if asset.get("name") == "checksums.txt":
         print(asset["browser_download_url"])
