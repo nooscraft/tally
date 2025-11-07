@@ -148,7 +148,7 @@ mod tests {
 
 ### Rust Best Practices
 
-This project follows comprehensive Rust best practices. **Please read the Rust guidance in `AGENTS.md` and the shared repository rules (`.cursor/rules/clean-code.mdc`) for detailed expectations.**
+This project follows comprehensive Rust best practices. **Please read the Rust guidance in `AGENTS.md`
 
 ### Quick Reference
 
