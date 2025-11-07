@@ -193,14 +193,24 @@ cat prompts.txt | tokuin --model gpt-4
 
 Run load tests against LLM APIs to measure performance, latency, and costs:
 
+> Provide credentials explicitly with `--openrouter-api-key`, `--openai-api-key`, or `--anthropic-api-key` (or set the matching environment variable). If you use the generic `--api-key`, make sure the `--model` value includes the provider prefix (e.g. `openai/gpt-4`).
+
 ```bash
 # Basic load test with OpenAI
-export OPENAI_API_KEY="sk-..."
-echo "What is 2+2?" | tokuin load-test --model gpt-4 --runs 100 --concurrency 10
+export OPENAI_API_KEY="sk-openai-..."
+echo "What is 2+2?" | tokuin load-test \
+  --model gpt-4 \
+  --runs 100 \
+  --concurrency 10 \
+  --openai-api-key "$OPENAI_API_KEY"
 
 # With OpenRouter (access to 400+ models)
 export OPENROUTER_API_KEY="sk-or-..."
-echo "Hello!" | tokuin load-test --model openai/gpt-4 --runs 50 --concurrency 5
+echo "Hello!" | tokuin load-test \
+  --model openai/gpt-4 \
+  --runs 50 \
+  --concurrency 5 \
+  --openrouter-api-key "$OPENROUTER_API_KEY"
 
 # With think time between requests
 tokuin load-test --model gpt-4 --runs 200 --concurrency 20 --think-time "250-750ms" --prompt-file prompts.txt
@@ -215,7 +225,8 @@ tokuin load-test \
   --concurrency 10 \
   --retry 3 \
   --estimate-cost \
-  --output-format json
+  --output-format json \
+  --openai-api-key "$OPENAI_API_KEY"
 ```
 
 Output:

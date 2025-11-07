@@ -436,7 +436,8 @@ impl Cli {
         } else {
             if !args.dry_run {
                 return Err(AppError::Config(
-                    "API key required. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or use --api-key".to_string(),
+                    "API key required. Use --openrouter-api-key/--openai-api-key/--anthropic-api-key, set OPENROUTER_API_KEY/OPENAI_API_KEY/ANTHROPIC_API_KEY, or provide --api-key with a matching model prefix (e.g. openai/gpt-4)."
+                        .to_string(),
                 ));
             }
             ("dummy-key-for-dry-run".to_string(), "openai")
