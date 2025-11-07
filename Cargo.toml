@@ -43,7 +43,7 @@ pulldown-cmark = { version = "0.9", optional = true }
 sentencepiece = { version = "0.12", optional = true }
 
 # HTTP client for load testing
-reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"], optional = true }
 async-trait = { version = "0.1", optional = true }
 
 # Progress bars for load testing
