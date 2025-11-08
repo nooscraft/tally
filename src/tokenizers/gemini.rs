@@ -79,8 +79,9 @@ impl GeminiTokenizer {
     ///
     /// A new `GeminiTokenizer` instance.
     #[cfg(feature = "sentencepiece")]
+    #[allow(dead_code)]
     pub fn with_model_file(model: &str, model_path: &str) -> Result<Self, TokenizerError> {
-        let processor = SentencePieceProcessor::from_file(model_path).map_err(|e| {
+        let processor = SentencePieceProcessor::open(model_path).map_err(|e| {
             TokenizerError::InitializationFailed(format!(
                 "Failed to load Gemini tokenizer model from '{}': {}",
                 model_path, e
@@ -109,6 +110,7 @@ impl Tokenizer for GeminiTokenizer {
         if let Some(ref processor) = self.processor {
             return processor
                 .encode(text)
+                .map(|pieces| pieces.into_iter().map(|piece| piece.id as usize).collect())
                 .map_err(|e| TokenizerError::EncodingFailed(e.to_string()));
         }
 
@@ -128,7 +130,7 @@ impl Tokenizer for GeminiTokenizer {
         if let Some(ref processor) = self.processor {
             let tokens_u32: Vec<u32> = _tokens.iter().map(|&t| t as u32).collect();
             return processor
-                .decode(&tokens_u32)
+                .decode_piece_ids(&tokens_u32)
                 .map_err(|e| TokenizerError::DecodingFailed(e.to_string()));
         }
 
@@ -163,17 +165,5 @@ impl Tokenizer for GeminiTokenizer {
 
     fn output_price_per_1k(&self) -> Option<f64> {
         self.output_price
-    }
-}
-
-#[cfg(test)]
-#[cfg(feature = "gemini")]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_gemini_tokenizer_with_file() {
-        // This test would require an actual model file
-        // Skipping for now
     }
 }
