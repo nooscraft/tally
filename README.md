@@ -445,6 +445,14 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 > Vibe coding welcome — if you collaborate with an AI pair programmer, skim `AGENTS.md` for a quick project brief and mention the session in your PR so everyone can follow the flow.
 
+### 🎉 Contributors
+
+Thanks to everyone who has dived in—bugs, docs, and feature requests all help shape Tokuin. Want to join them?
+
+[![Contributors](https://contrib.rocks/image?repo=nooscraft/tokuin)](https://github.com/nooscraft/tokuin/graphs/contributors)
+
+If you ship a noteworthy feature, open a PR and add yourself to `docs/CONTRIBUTORS.md` (or include a small note in your PR and we’ll update it). Shoutouts go out in release notes.
+
 ### Adding New Models
 
 See [ADDING_MODELS_GUIDE.md](ADDING_MODELS_GUIDE.md) for instructions on adding support for new models.
