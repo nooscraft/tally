@@ -248,6 +248,23 @@ tokuin load-test \
   --openai-api-key "$OPENAI_API_KEY"
 ```
 
+### Custom Pricing Overrides
+
+Pricing for a handful of popular OpenAI/Gemini models ships in-tree, but rates move quickly. Supply your own TOML file to keep cost projections accurate:
+
+```bash
+cp docs/PRICING_TEMPLATE.toml pricing.toml
+# edit pricing.toml with the latest numbers
+
+tokuin --pricing-file pricing.toml --model gpt-4 --price prompt.txt
+
+# or via environment variable
+export TOKUIN_PRICING_FILE=/path/to/pricing.toml
+tokuin load-test --model openrouter/anthropic-sonnet --runs 10 --estimate-cost
+```
+
+Keys follow the pattern `[provider.model]` (for example `[openrouter.anthropic-sonnet]`). At runtime the CLI merges overrides with built-in defaults; if a model is missing, cost estimates fall back to any bundled price or simply show token counts.
+
 Output:
 ```
 Starting load test: 100 requests with concurrency 10
@@ -290,6 +307,7 @@ OPTIONS:
     -f, --format <FORMAT>       Output format [default: text] 
                                 [possible values: text, json, markdown]
     -p, --price                 Show pricing information
+        --pricing-file <FILE>    Path to a pricing overrides TOML file (or set TOKUIN_PRICING_FILE)
     --minify                    Strip markdown formatting (requires markdown feature)
     --diff <FILE>               Compare with another prompt file
     -w, --watch                 Watch file for changes and re-run (requires watch feature)
@@ -320,6 +338,7 @@ OPTIONS:
         --dry-run                     Estimate costs without making API calls
         --max-cost <COST>             Maximum cost threshold (stop if exceeded)
     -e, --estimate-cost              Show cost estimation in results
+        --pricing-file <FILE>         Path to a pricing overrides TOML file (or set TOKUIN_PRICING_FILE)
     -h, --help                        Print help
 ```
 

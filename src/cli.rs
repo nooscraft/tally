@@ -62,6 +62,10 @@ pub struct Cli {
     #[arg(short, long)]
     #[cfg(feature = "watch")]
     pub watch: bool,
+
+    /// Path to a custom pricing configuration (TOML).
+    #[arg(long, value_name = "FILE", global = true)]
+    pub pricing_file: Option<String>,
 }
 
 /// Available commands.
@@ -262,6 +266,7 @@ impl Cli {
                     diff: diff.or(self.diff),
                     #[cfg(feature = "watch")]
                     watch: watch || self.watch,
+                    pricing_file: self.pricing_file.clone(),
                 };
                 Self::run_estimate(estimate_args)
             }
@@ -301,6 +306,7 @@ impl Cli {
                     dry_run,
                     max_cost,
                     estimate_cost,
+                    pricing_file: self.pricing_file.clone(),
                 };
                 Self::run_load_test(load_args)
             }
@@ -318,6 +324,7 @@ impl Cli {
                     diff: self.diff,
                     #[cfg(feature = "watch")]
                     watch: self.watch,
+                    pricing_file: self.pricing_file,
                 };
                 Self::run_estimate(estimate_args)
             }
@@ -336,7 +343,8 @@ impl Cli {
             return Self::run_diff(&args, diff_file);
         }
 
-        let registry = ModelRegistry::new();
+        let registry = ModelRegistry::new_with_pricing(args.pricing_file.as_deref())
+            .map_err(AppError::Model)?;
 
         // Determine input
         let input = Self::get_input(&args.input)?;
@@ -389,8 +397,21 @@ impl Cli {
         for model_name in &models {
             let tokenizer = registry.get_tokenizer(model_name)?;
             let tokenizer_name = tokenizer.name().to_string();
-            let result =
-                Self::count_tokens(&*tokenizer, &messages, &tokenizer_name, breakdown, price)?;
+            let pricing_override = if price {
+                registry
+                    .pricing_for(model_name)
+                    .or_else(|| registry.pricing_for(&tokenizer_name))
+            } else {
+                None
+            };
+            let result = Self::count_tokens(
+                &*tokenizer,
+                &messages,
+                &tokenizer_name,
+                breakdown,
+                price,
+                pricing_override,
+            )?;
             results.push(result);
         }
 
@@ -463,6 +484,14 @@ impl Cli {
         let endpoint = args.endpoint.clone().unwrap_or_default();
         let model = args.model.clone();
         let estimate_cost = args.estimate_cost;
+        let pricing_registry = if estimate_cost {
+            Some(
+                ModelRegistry::new_with_pricing(args.pricing_file.as_deref())
+                    .map_err(AppError::Model)?,
+            )
+        } else {
+            None
+        };
 
         if provider == Provider::Generic && endpoint.is_empty() && !args.dry_run {
             return Err(AppError::Config(
@@ -533,7 +562,13 @@ impl Cli {
         };
 
         // Calculate and display metrics
-        Self::display_load_test_results(&results, &model, &args.output_format, estimate_cost)?;
+        Self::display_load_test_results(
+            &results,
+            &model,
+            &args.output_format,
+            estimate_cost,
+            pricing_registry.as_ref(),
+        )?;
 
         Ok(())
     }
@@ -592,10 +627,21 @@ impl Cli {
         model: &str,
         output_format: &LoadTestOutputFormat,
         estimate_cost: bool,
+        pricing_registry: Option<&ModelRegistry>,
     ) -> Result<(), AppError> {
+        let total_requests = results.len();
         let successful = results.iter().filter(|r| r.success).count();
-        let failed = results.len() - successful;
-        let success_rate = (successful as f64 / results.len() as f64) * 100.0;
+        let failed = total_requests.saturating_sub(successful);
+        let success_rate = if total_requests > 0 {
+            (successful as f64 / total_requests as f64) * 100.0
+        } else {
+            0.0
+        };
+        let failure_rate = if total_requests > 0 {
+            100.0 - success_rate
+        } else {
+            0.0
+        };
 
         let latencies: Vec<u64> = results
             .iter()
@@ -603,6 +649,8 @@ impl Cli {
             .collect();
 
         let total_tokens_reported: usize = results.iter().filter_map(|r| r.total_tokens).sum();
+        let input_tokens: usize = results.iter().filter_map(|r| r.input_tokens).sum();
+        let output_tokens: usize = results.iter().filter_map(|r| r.output_tokens).sum();
 
         let avg_latency = if !latencies.is_empty() {
             latencies.iter().sum::<u64>() as f64 / latencies.len() as f64
@@ -612,7 +660,7 @@ impl Cli {
 
         let p50 = if !latencies.is_empty() {
             let mut sorted = latencies.clone();
-            sorted.sort();
+            sorted.sort_unstable();
             sorted[sorted.len() / 2]
         } else {
             0
@@ -620,18 +668,43 @@ impl Cli {
 
         let p95 = if !latencies.is_empty() {
             let mut sorted = latencies.clone();
-            sorted.sort();
-            sorted[(sorted.len() as f64 * 0.95) as usize]
+            sorted.sort_unstable();
+            let index = ((sorted.len() as f64) * 0.95).ceil() as usize;
+            let index = index.clamp(0, sorted.len().saturating_sub(1));
+            sorted[index]
         } else {
             0
+        };
+
+        let (input_cost, output_cost, total_cost) = if estimate_cost {
+            if let Some(registry) = pricing_registry {
+                if let Some((input_rate, output_rate)) = registry
+                    .pricing_for(model)
+                    .or_else(|| registry.pricing_for(model.rsplit('/').next().unwrap_or(model)))
+                {
+                    let input_cost = (input_tokens as f64 / 1000.0) * input_rate;
+                    let output_cost = (output_tokens as f64 / 1000.0) * output_rate;
+                    (
+                        Some(input_cost),
+                        Some(output_cost),
+                        Some(input_cost + output_cost),
+                    )
+                } else {
+                    (None, None, None)
+                }
+            } else {
+                (None, None, None)
+            }
+        } else {
+            (None, None, None)
         };
 
         match output_format {
             LoadTestOutputFormat::Text => {
                 println!("\n=== Load Test Results ===");
-                println!("Total Requests: {}", results.len());
+                println!("Total Requests: {}", total_requests);
                 println!("Successful: {} ({:.1}%)", successful, success_rate);
-                println!("Failed: {} ({:.1}%)", failed, 100.0 - success_rate);
+                println!("Failed: {} ({:.1}%)", failed, failure_rate);
                 println!("\nLatency (ms):");
                 println!("  Average: {:.2}", avg_latency);
                 println!("  p50: {}", p50);
@@ -658,50 +731,68 @@ impl Cli {
                 }
 
                 if estimate_cost {
-                    let registry = ModelRegistry::new();
-                    if let Ok(tokenizer) = registry.get_tokenizer(model) {
-                        let input_tokens: usize =
-                            results.iter().filter_map(|r| r.input_tokens).sum();
-                        let output_tokens: usize =
-                            results.iter().filter_map(|r| r.output_tokens).sum();
+                    println!("\nToken Usage:");
+                    println!("  Input tokens: {}", input_tokens);
+                    println!("  Output tokens: {}", output_tokens);
 
-                        let input_cost = tokenizer
-                            .input_price_per_1k()
-                            .map(|price| (input_tokens as f64 / 1000.0) * price);
-                        let output_cost = tokenizer
-                            .output_price_per_1k()
-                            .map(|price| (output_tokens as f64 / 1000.0) * price);
-
-                        if let (Some(in_cost), Some(out_cost)) = (input_cost, output_cost) {
-                            let total_cost = in_cost + out_cost;
-                            println!("\nCost Estimation:");
-                            println!("  Input tokens: {}", input_tokens);
-                            println!("  Output tokens: {}", output_tokens);
-                            println!("  Input cost: ${:.6}", in_cost);
-                            println!("  Output cost: ${:.6}", out_cost);
-                            println!("  Total cost: ${:.6}", total_cost);
-                        }
+                    if let (Some(in_cost), Some(out_cost), Some(total)) =
+                        (input_cost, output_cost, total_cost)
+                    {
+                        println!("\nCost Estimation:");
+                        println!("  Input cost: ${:.6}", in_cost);
+                        println!("  Output cost: ${:.6}", out_cost);
+                        println!("  Total cost: ${:.6}", total);
                     }
                 }
             }
             LoadTestOutputFormat::Json => {
                 let json = serde_json::json!({
-                    "total_requests": results.len(),
+                    "total_requests": total_requests,
                     "successful": successful,
                     "failed": failed,
                     "success_rate": success_rate,
                     "latency_ms": {
                         "average": avg_latency,
                         "p50": p50,
-                        "p95": p95
+                        "p95": p95,
                     },
                     "tokens": {
-                        "total_reported": total_tokens_reported
-                    }
+                        "reported": total_tokens_reported,
+                        "input": input_tokens,
+                        "output": output_tokens,
+                    },
+                    "cost_usd": {
+                        "input": input_cost,
+                        "output": output_cost,
+                        "total": total_cost,
+                    },
                 });
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&json).map_err(AppError::Json)?
+                );
+            }
+            LoadTestOutputFormat::Csv => {
+                let format_opt = |value: Option<f64>| -> String {
+                    value.map(|v| format!("{:.6}", v)).unwrap_or_default()
+                };
+
+                println!("total_requests,successful,failed,success_rate,avg_latency_ms,p50_latency_ms,p95_latency_ms,total_tokens,input_tokens,output_tokens,input_cost_usd,output_cost_usd,total_cost_usd");
+                println!(
+                    "{},{},{},{:.4},{:.2},{},{},{},{},{},{},{},{}",
+                    total_requests,
+                    successful,
+                    failed,
+                    success_rate,
+                    avg_latency,
+                    p50,
+                    p95,
+                    total_tokens_reported,
+                    input_tokens,
+                    output_tokens,
+                    format_opt(input_cost),
+                    format_opt(output_cost),
+                    format_opt(total_cost)
                 );
             }
             _ => {
@@ -744,6 +835,7 @@ impl Cli {
         model_name: &str,
         breakdown: bool,
         price: bool,
+        pricing_override: Option<(f64, f64)>,
     ) -> Result<TokenResult, AppError> {
         let mut total = 0;
         let mut token_breakdown = if breakdown {
@@ -771,18 +863,21 @@ impl Cli {
         }
 
         // Calculate costs
+        let override_input = pricing_override.map(|p| p.0);
+        let override_output = pricing_override.map(|p| p.1);
+
         let input_cost = if price {
-            tokenizer
-                .input_price_per_1k()
-                .map(|price| (total as f64 / 1000.0) * price)
+            override_input
+                .or_else(|| tokenizer.input_price_per_1k())
+                .map(|rate| (total as f64 / 1000.0) * rate)
         } else {
             None
         };
 
         let output_cost = if price {
-            tokenizer
-                .output_price_per_1k()
-                .map(|price| (total as f64 / 1000.0) * price)
+            override_output
+                .or_else(|| tokenizer.output_price_per_1k())
+                .map(|rate| (total as f64 / 1000.0) * rate)
         } else {
             None
         };
@@ -798,7 +893,8 @@ impl Cli {
 
     /// Run in diff mode, comparing two prompts.
     fn run_diff(args: &EstimateArgs, diff_file: &str) -> Result<(), AppError> {
-        let registry = ModelRegistry::new();
+        let registry = ModelRegistry::new_with_pricing(args.pricing_file.as_deref())
+            .map_err(AppError::Model)?;
 
         // Get both inputs
         let input1 = Self::get_input(&args.input)?;
@@ -837,8 +933,28 @@ impl Cli {
         let messages2 = parser2.parse(&input2)?;
 
         // Count tokens for both
-        let result1 = Self::count_tokens(&*tokenizer, &messages1, model, false, args.price)?;
-        let result2 = Self::count_tokens(&*tokenizer, &messages2, model, false, args.price)?;
+        let pricing_override = if args.price {
+            registry.pricing_for(model)
+        } else {
+            None
+        };
+
+        let result1 = Self::count_tokens(
+            &*tokenizer,
+            &messages1,
+            model,
+            false,
+            args.price,
+            pricing_override,
+        )?;
+        let result2 = Self::count_tokens(
+            &*tokenizer,
+            &messages2,
+            model,
+            false,
+            args.price,
+            pricing_override,
+        )?;
 
         // Show diff
         let diff = result2.tokens as i64 - result1.tokens as i64;
@@ -962,6 +1078,7 @@ pub struct EstimateArgs {
     diff: Option<String>,
     #[cfg(feature = "watch")]
     watch: bool,
+    pricing_file: Option<String>,
 }
 
 #[cfg(feature = "watch")]
@@ -978,6 +1095,7 @@ impl Default for EstimateArgs {
             minify: false,
             diff: None,
             watch: false,
+            pricing_file: None,
         }
     }
 }
@@ -1002,6 +1120,7 @@ struct LoadTestArgs {
     dry_run: bool,
     max_cost: Option<f64>,
     estimate_cost: bool,
+    pricing_file: Option<String>,
 }
 
 #[cfg(feature = "load-test")]
@@ -1042,6 +1161,7 @@ impl From<Command> for LoadTestArgs {
                 dry_run,
                 max_cost,
                 estimate_cost,
+                pricing_file: None,
             },
             _ => panic!("Not a LoadTest command"),
         }
@@ -1116,6 +1236,7 @@ impl From<Command> for EstimateArgs {
                 diff,
                 #[cfg(feature = "watch")]
                 watch,
+                pricing_file: None,
             },
             _ => panic!("Not an Estimate command"),
         }
