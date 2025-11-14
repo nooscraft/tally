@@ -45,7 +45,7 @@ fn create_test_prompt_library() -> TempDir {
 fn test_analyze_folder_basic() {
     let test_dir = create_test_prompt_library();
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--",
             "analyze-prompts",
@@ -74,7 +74,7 @@ fn test_analyze_folder_basic() {
 fn test_analyze_folder_text_output() {
     let test_dir = create_test_prompt_library();
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--",
             "analyze-prompts",
@@ -100,7 +100,7 @@ fn test_analyze_folder_text_output() {
 fn test_analyze_folder_with_context_limit() {
     let test_dir = create_test_prompt_library();
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--",
             "analyze-prompts",
@@ -125,7 +125,7 @@ fn test_analyze_folder_with_context_limit() {
 #[test]
 fn test_analyze_folder_nonexistent_dir() {
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--",
             "analyze-prompts",
@@ -148,7 +148,7 @@ fn test_analyze_folder_nonexistent_dir() {
 fn test_analyze_folder_top_n() {
     let test_dir = create_test_prompt_library();
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--",
             "analyze-prompts",

@@ -14,6 +14,7 @@ enum FileFormat {
     Json,
     Markdown,
     Yaml,
+    #[allow(dead_code)]
     Unknown,
 }
 

@@ -24,7 +24,7 @@ pub fn detect_duplicates(
         let normalized = normalize_content(&analysis.normalized_content);
         content_map
             .entry(normalized)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(analysis.file_path.clone());
     }
 
