@@ -14,7 +14,7 @@ use sentencepiece::SentencePieceProcessor;
 /// # Example
 ///
 /// ```rust
-/// use tokuin::tokenizers::GeminiTokenizer;
+/// use tokuin::tokenizers::{GeminiTokenizer, Tokenizer};
 ///
 /// let tokenizer = GeminiTokenizer::new("gemini-pro")?;
 /// let count = tokenizer.count_tokens("Hello, world!")?;

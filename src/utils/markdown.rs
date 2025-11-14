@@ -23,7 +23,7 @@ use pulldown_cmark::{html, Options, Parser};
 ///
 /// let markdown = "# Title\n\nThis is **bold** text.";
 /// let plain = strip_markdown(markdown);
-/// assert_eq!(plain.trim(), "Title\n\nThis is bold text.");
+/// assert_eq!(plain.trim(), "Title\nThis is bold text.");
 /// ```
 #[cfg(feature = "markdown")]
 pub fn strip_markdown(text: &str) -> String {

@@ -12,7 +12,7 @@ use tiktoken_rs::{get_bpe_from_model, CoreBPE};
 /// # Example
 ///
 /// ```rust
-/// use tokuin::tokenizers::OpenAITokenizer;
+/// use tokuin::tokenizers::{OpenAITokenizer, Tokenizer};
 ///
 /// let tokenizer = OpenAITokenizer::new("gpt-4")?;
 /// let count = tokenizer.count_tokens("Hello, world!")?;
@@ -44,10 +44,10 @@ impl OpenAITokenizer {
     /// # Example
     ///
     /// ```rust
-    /// use prompt_tokens::tokenizers::OpenAITokenizer;
+    /// use tokuin::tokenizers::OpenAITokenizer;
     ///
     /// let tokenizer = OpenAITokenizer::new("gpt-4")?;
-    /// # Ok::<(), prompt_tokens::error::TokenizerError>(())
+    /// # Ok::<(), tokuin::error::TokenizerError>(())
     /// ```
     pub fn new(model: &str) -> Result<Self, TokenizerError> {
         let bpe = get_bpe_from_model(model).map_err(|e| {
