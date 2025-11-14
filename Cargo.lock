@@ -2359,6 +2359,7 @@ dependencies = [
  "tiktoken-rs",
  "tokio",
  "toml",
+ "walkdir",
 ]
 
 [[package]]

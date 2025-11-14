@@ -1,6 +1,7 @@
 /// Tokuin - Token usage and cost estimator for LLM prompts.
 ///
 /// A fast CLI tool to estimate token usage and API costs for LLM prompts.
+mod analyzers;
 mod cli;
 mod error;
 mod models;

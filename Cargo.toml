@@ -1,6 +1,6 @@
 [package]
 name = "tokuin"
-version = "0.1.0"
+version = "0.1.5"
 edition = "2021"
 authors = ["Tokuin Contributors"]
 license = "MIT OR Apache-2.0"
@@ -58,6 +58,9 @@ serde_yaml = { version = "0.9", optional = true }
 # Random number generation for think time
 fastrand = { version = "2.0", optional = true }
 
+# Directory traversal for prompt library analysis
+walkdir = "2.4"
+
 [features]
 default = ["openai"]
 openai = ["tiktoken-rs"]
@@ -73,6 +76,10 @@ all = ["openai", "watch", "markdown", "gemini", "load-test"]
 # Testing
 tempfile = "3.8"
 httpmock = "0.7"
+
+[lib]
+name = "tokuin"
+path = "src/lib.rs"
 
 [[bin]]
 name = "tokuin"

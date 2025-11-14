@@ -1,3 +1,4 @@
+pub mod insights;
 pub mod json;
 /// Output formatters for displaying results.
 pub mod text;
@@ -5,6 +6,7 @@ pub mod text;
 #[cfg(feature = "markdown")]
 pub mod markdown;
 
+pub use insights::InsightsFormatter;
 pub use json::JsonFormatter;
 pub use text::TextFormatter;
 

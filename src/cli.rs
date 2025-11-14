@@ -180,6 +180,34 @@ pub enum Command {
         #[arg(short, long)]
         estimate_cost: bool,
     },
+
+    /// Analyze a prompt library directory
+    #[command(name = "analyze-prompts")]
+    Analyze {
+        /// Directory to analyze
+        #[arg(value_name = "DIR")]
+        folder: String,
+
+        /// Model to use for tokenization (default: gpt-4)
+        #[arg(short, long, default_value = "gpt-4")]
+        model: String,
+
+        /// Top N most expensive prompts to show
+        #[arg(long, default_value = "10")]
+        top_n: usize,
+
+        /// Monthly invocation count for cost projection
+        #[arg(long, default_value = "1000")]
+        monthly_invocations: u64,
+
+        /// Model context window limit to check against
+        #[arg(long)]
+        context_limit: Option<usize>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value = "text")]
+        format: OutputFormat,
+    },
 }
 
 /// Output format options.
@@ -309,6 +337,16 @@ impl Cli {
                     pricing_file: self.pricing_file.clone(),
                 };
                 Self::run_load_test(load_args)
+            }
+            Some(Command::Analyze {
+                folder,
+                model,
+                top_n,
+                monthly_invocations,
+                context_limit,
+                format,
+            }) => {
+                Self::run_analyze(folder, model, top_n, monthly_invocations, context_limit, format)
             }
             None => {
                 // Backward compatibility: use flat structure
@@ -797,6 +835,74 @@ impl Cli {
             }
             _ => {
                 println!("Format {:?} not yet implemented", output_format);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Run analyze-prompts command.
+    fn run_analyze(
+        folder: String,
+        model: String,
+        top_n: usize,
+        monthly_invocations: u64,
+        context_limit: Option<usize>,
+        format: OutputFormat,
+    ) -> Result<(), AppError> {
+        use crate::analyzers::PromptScanner;
+        use crate::output::InsightsFormatter;
+        use std::path::Path;
+
+        let folder_path = Path::new(&folder);
+        if !folder_path.exists() {
+            return Err(AppError::Parse(crate::error::ParseError::InvalidFormat(format!(
+                "Directory does not exist: {}",
+                folder
+            ))));
+        }
+        if !folder_path.is_dir() {
+            return Err(AppError::Parse(crate::error::ParseError::InvalidFormat(format!(
+                "Path is not a directory: {}",
+                folder
+            ))));
+        }
+
+        // Create model registry
+        let registry = ModelRegistry::new_with_pricing(None).map_err(AppError::Model)?;
+
+        // Create scanner
+        let scanner = PromptScanner::new(registry, model.clone(), context_limit);
+
+        eprintln!("Scanning directory: {}", folder);
+        let analyses = scanner.scan_directory(folder_path)?;
+
+        if analyses.is_empty() {
+            eprintln!("No prompt files found in directory.");
+            return Ok(());
+        }
+
+        eprintln!("Analyzed {} prompt files", analyses.len());
+
+        // Generate insights
+        let insights = PromptScanner::generate_insights(&analyses, top_n, monthly_invocations);
+
+        // Format output
+        match format {
+            OutputFormat::Text => {
+                let output = InsightsFormatter::format_text(&insights, &model, context_limit);
+                println!("{}", output);
+            }
+            OutputFormat::Json => {
+                let output = InsightsFormatter::format_json(&insights)
+                    .map_err(|e| AppError::Parse(crate::error::ParseError::InvalidJson(e)))?;
+                println!("{}", output);
+            }
+            #[cfg(feature = "markdown")]
+            OutputFormat::Markdown => {
+                // For now, use text format for markdown
+                let output = InsightsFormatter::format_text(&insights, &model, context_limit);
+                println!("{}", output);
             }
         }
 
